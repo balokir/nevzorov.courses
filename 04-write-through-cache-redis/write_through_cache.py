@@ -25,29 +25,55 @@ def setup_db(cur, conn):
 
 def insert_postgres_only(cur, conn):
     print(f"Inserting {N_FIRST} rows into Postgres only...")
+
+    t0 = time.perf_counter()
+
     for i in range(0, N_FIRST, DB_BATCH):
         cur.executemany(
             "INSERT INTO test (id, value) VALUES (%s, %s);",
-            [(k, random.randint(1, 1_000_000)) for k in range(i, i+DB_BATCH)]
+            [(k, random.randint(1, 1_000_000)) for k in range(i, i + DB_BATCH)]
         )
         conn.commit()
-    print("Done.")
+
+    t1 = time.perf_counter()
+    total_time = t1 - t0
+
+    print(
+        f"Postgres only insert: "
+        f"total={N_FIRST}, "
+        f"time={total_time:.4f}s, "
+        f"avg={total_time / N_FIRST * 1e6:.1f}µs/op"
+    )
 
 def insert_write_through(cur, conn, r):
     print(f"Inserting {N_SECOND} rows into Postgres and Redis (write-through)...")
-    for i in range(N_FIRST, N_FIRST+N_SECOND, DB_BATCH):
-        batch = [(k, random.randint(1, 1_000_000)) for k in range(i, i+DB_BATCH)]
+
+    t0 = time.perf_counter()
+
+    for i in range(N_FIRST, N_FIRST + N_SECOND, DB_BATCH):
+        batch = [(k, random.randint(1, 1_000_000)) for k in range(i, i + DB_BATCH)]
+
         cur.executemany(
             "INSERT INTO test (id, value) VALUES (%s, %s);",
             batch
         )
         conn.commit()
+
         # Write-through to Redis
         with r.pipeline() as pipe:
             for k, v in batch:
                 pipe.set(str(k), v)
             pipe.execute()
-    print("Done.")
+
+    t1 = time.perf_counter()
+    total_time = t1 - t0
+
+    print(
+        f"Write-through insert: "
+        f"total={N_SECOND}, "
+        f"time={total_time:.4f}s, "
+        f"avg={total_time / N_SECOND * 1e6:.1f}µs/op"
+    )
 
 def cache_lookup_test(cur, r, key_range, label):
     hits = 0
